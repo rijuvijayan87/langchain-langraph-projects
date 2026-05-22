@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+from typing import List
 
 load_dotenv(override=True)
 
@@ -110,9 +111,90 @@ def new_way_of_chain():
     print(f"response: {response}")
 
 
+def demo():
+    models = {
+        "gpt-4o-mini": init_chat_model(
+            model="gpt-4o-mini",
+            temperature=0,
+            streaming=True,
+            max_retries=3,
+        ),
+        "gpt-4": init_chat_model(
+            model="gpt-4",
+            temperature=0,
+            streaming=True,
+            max_retries=3,
+        ),
+    }
+
+    for model_name, model in models.items():
+        response = model.invoke("explain langchain in 1 sentence only")
+        print(f"response from {model_name} : {response.content}")
+
+
+def exercise_multi_model(question: str, models: List[str]):
+    """Create a function that
+    1. Takes a question and a list of models
+    2. Gets response from all models
+    3. Returns dict of {model_name: response}
+
+    Test with question="what is ai?", models = ["gpt-4o-mini", "gpt-4o"]
+    """
+    response_from_ai = {}
+    for model_name in models:
+        model = init_chat_model(
+            model=model_name,
+            temperature=0,
+            max_tokens=5000,
+            max_retries=3,
+            streaming=True,
+        )
+
+        response = model.invoke(question)
+
+        response_from_ai[model_name] = response.content
+
+    return response_from_ai
+
+
+def test_prompt_templates():
+
+    # prompt_template = ChatPromptTemplate.from_template(
+    #     "tell me a {theme} story about {topic} in a single sentence"
+    # )
+
+    prompt_template = ChatPromptTemplate.from_messages(
+        [
+            ("system", "you are assistant who is {mood}"),
+            ("human", "tell me a joke about {topic}"),
+        ]
+    )
+
+    message = prompt_template.format_prompt(mood="angry", topic="software engineering")
+
+    print(message)
+
+    model = init_chat_model(model="gpt-4o-mini", temperature=0, max_tokens=500)
+    parser = StrOutputParser()
+
+    chain = model | parser
+
+    response = chain.invoke(message)
+    print(response)
+
+
 if __name__ == "__main__":
     # demo_basic_chain()
     # demo_batch_chain()
     # demo_stream_chain()
     # excercise_first_chain()
-    new_way_of_chain()
+    # new_way_of_chain()
+    # demo()
+
+    ########
+    # models = ["gpt-4o-mini", "gpt-4o"]
+    # response = exercise_multi_model("what is ai?", models=models)
+    # print(response)
+    ########
+
+    test_prompt_templates()
