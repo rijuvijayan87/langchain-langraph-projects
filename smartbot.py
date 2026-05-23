@@ -1,9 +1,12 @@
+from json import load
+
+
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 class QAResponse(BaseModel):
@@ -48,6 +51,7 @@ class QABot:
         self.chain = self.prompt_template | self.llm
 
     def ask(self, question: str) -> QAResponse:
+
         try:
             result = self.chain.invoke({"question": question})
             if not isinstance(result, QAResponse):
