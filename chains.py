@@ -2,8 +2,10 @@ from itertools import chain
 
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableLambda, RunnableParallel
+from langchain_core.runnables import RunnableBranch, RunnableLambda, RunnableParallel
+from openai import max_retries
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -153,5 +155,118 @@ daniel.okafor@northwindlogistics.example
     print(f"summary : {results.summary}")
 
 
+def runnable_branch_demo():
+    """Example of branch chain call using langchain"""
+
+    general_assistant_prompt_template = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "You are a helpful assistant. you answer questions in a clear and crisp manner",
+            ),
+            ("human", "{question}"),
+        ]
+    )
+
+    classifier_assistant_prompt_template = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "classify this as 'code' or 'general'. you only generate only one of these two words",
+            ),
+            ("human", "{question}"),
+        ]
+    )
+
+    coding_assistant_prompt_template = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "You are a coding assisntant. You provide coding solution for the questions being asked",
+            ),
+            ("human", "{question}"),
+        ]
+    )
+
+    general_llm = init_chat_model(
+        model="gpt-4o-mini", temperature=0.5, max_retries=3, max_tokens=1000
+    )
+
+    classifier_llm = init_chat_model(
+        model="gpt-4o-mini", temperature=0.5, max_retries=3, max_tokens=1000
+    )
+
+    coding_llm = init_chat_model(
+        model="gpt-4", temperature=0, max_retries=3, max_tokens=1000
+    )
+
+    general_chain = general_assistant_prompt_template | general_llm | StrOutputParser()
+    classifier_llm = (
+        classifier_assistant_prompt_template | classifier_llm | StrOutputParser()
+    )
+
+    coding_chain = coding_assistant_prompt_template | coding_llm | StrOutputParser()
+
+    def is_coding_required(question) -> bool:
+        result = classifier_llm.invoke(question)
+        return "code" in result
+
+    branching_chain = RunnableBranch((is_coding_required, coding_chain), general_chain)
+
+    # Test
+
+    questions = [
+        "tell me how the role of software engineers evolve with the influx of AI",
+        "give me a program in python to sum two numbers?",
+    ]
+
+    for q in questions:
+        result = branching_chain.invoke({"question": q})
+        print(f"question: {q} -> answer: {result}")
+
+
+def demo_debugging():
+    prompt_template = ChatPromptTemplate.from_template(
+        "translate this {sentence} to Spanish"
+    )
+
+    llm = init_chat_model(model="gpt-4o-mini")
+
+    chain = prompt_template | llm | StrOutputParser()
+
+    print(f"input parser schema: {chain.input_schema.model_json_schema()}")
+    print(f"output parser schema : {chain.output_schema.model_json_schema()}")
+
+    result = chain.with_config(run_name="Duolingo").invoke(
+        {"sentence": "how are you doing?"}
+    )
+
+    print(result)
+
+
+def debug_logs_with_lambda():
+
+    def log_step(x, step_name=""):
+        print(f"[{step_name}] {type(x).__name__}: {str(x)[:100]}")
+        return x
+
+    prompt = ChatPromptTemplate.from_template("say how are you {person}")
+
+    model = init_chat_model(model="gpt-4o-mini")
+
+    debug_chain = (
+        prompt
+        | RunnableLambda(lambda x: log_step(x, "after_prompt"))
+        | model
+        | RunnableLambda(lambda x: log_step(x, "after_model"))
+        | StrOutputParser()
+    )
+
+    debug_chain.invoke({"person": "riju"})
+
+
 if __name__ == "__main__":
-    call_chain()
+    # call_chain()
+    # runnable_branch_demo()
+    # demo_debugging()
+    debug_logs_with_lambda()
