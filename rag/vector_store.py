@@ -99,8 +99,11 @@ def chroma_db():
     #     print(doc.page_content)
 
     prompt = ChatPromptTemplate.from_template("""
-        You are an useful assistant. Answer using the provided context. if you do not know the answer
-        just say so. 
+        You are a helpful assistant. Answer using only the numbered sources in the context below.
+        If you do not know the answer, say so.
+
+        At the end of your answer, add a "Sources:" section listing the question(s) from the
+        numbered sources you used (e.g. "Sources: 1. <question>, 2. <question>").
 
         context: {context}
         question: {question}
@@ -108,8 +111,18 @@ def chroma_db():
 
     llm = init_chat_model(model="gpt-4o-mini", max_retries=2)
 
+    def format_docs_with_sources(docs: list[Document]):
+        formatted = []
+        for i, doc in enumerate(docs):
+            source = doc.metadata.get("question", "unknown")
+            formatted.append(f"{i+1} {source}: \n {doc.page_content}")
+        return "\n\n".join(formatted)
+
     chain = (
-        {"context": results_as_retriever, "question": RunnablePassthrough()}
+        {
+            "context": results_as_retriever | format_docs_with_sources,
+            "question": RunnablePassthrough(),
+        }
         | prompt
         | llm
         | StrOutputParser()
