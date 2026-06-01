@@ -15,4 +15,5 @@ dependencies = [
     "pypdf>=6.12.2",
     "python-dotenv>=1.2.2",
     "ruff>=0.15.14",
+    "pydantic-settings>=2.14.1",
 ]
