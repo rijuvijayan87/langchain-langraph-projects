@@ -1,12 +1,15 @@
+import logging
 import os
 import shutil
 from datetime import datetime
+from pydoc import doc
 from typing import TypedDict
 
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langchain.messages import AIMessage, HumanMessage
 from langchain_chroma import Chroma
+from langchain_classic.retrievers import MultiQueryRetriever
 from langchain_core.chat_history import (
     BaseChatMessageHistory,
     InMemoryChatMessageHistory,
@@ -14,6 +17,7 @@ from langchain_core.chat_history import (
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.retrievers import BaseRetriever
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import BaseModel, Field
@@ -134,11 +138,26 @@ class AIResearchAssistant:
                 sources.add(metadata["source"])
         return sorted(list(sources))
 
-    def _build_retriever(self, score_threshold: float = 0.5):
-        return self.vectorstore.as_retriever(
-            search_type="similarity_score_threshold",
-            search_kwargs={"k": 4, "score_threshold": score_threshold},
+    def _build_retriever(
+        self, score_threshold: float = 0.5, use_advanced: bool = False
+    ) -> BaseRetriever:
+        # base_retriever = self.vectorstore.as_retriever(
+        #     search_type="similarity_score_threshold",
+        #     search_kwargs={"k": 4, "score_threshold": score_threshold},
+        # )
+        base_retriever = self.vectorstore.as_retriever(
+            search_type="similarity",
+            search_kwargs={"k": 4},
         )
+
+        if not use_advanced:
+            return base_retriever
+
+        print("using multi-query retriever...")
+        multi_query_retriever = MultiQueryRetriever.from_llm(
+            retriever=base_retriever, llm=self.llm
+        )
+        return multi_query_retriever
 
     def _format_docs_for_context(self, docs: list[Document]) -> str:
         """Format retrieved documents into a string for the prompt"""
@@ -152,13 +171,15 @@ class AIResearchAssistant:
             formatted.append(f"[Source {i+1}: {source}]\n{doc.page_content}")
         return "\n\n--\n\n".join(formatted)
 
-    def ask(self, question: str) -> str:
+    def ask(
+        self, question: str, session_id: str = "default", use_advanced: bool = True
+    ) -> str:
         """Ask a question against research documents"""
 
-        history = self._get_session_history("session_id")
+        history = self._get_session_history(session_id=session_id)
 
         # Step 1: Retrieve relevant chunks
-        retriever = self._build_retriever()
+        retriever = self._build_retriever(use_advanced=use_advanced)
         docs = retriever.invoke(question)
 
         # Step 2: Format into context string
@@ -301,37 +322,48 @@ if __name__ == "__main__":
     print(f"\nTotal chunks indexed: {assistant.get_document_count()}")
     print(f"Sources: {assistant.list_sources()}")
 
-    # Question 1: Direct answer
-    print("\n" + "=" * 60)
-    print("QUESTION 1: Direct factual question")
-    print("\n" + "=" * 60)
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.DEBUG)
 
-    q1 = "What is RAG and what are it's main components"
-    print(f"\nUser: {q1}")
-    print(f"\nAssistant: {assistant.ask(question=q1)}")
+    retriever = assistant._build_retriever(use_advanced=True)
+    docs = retriever.invoke("what tools help me build AI apps?")
 
-    # Question 2: Cross-document
-    print("\n" + "=" * 60)
-    print("QUESTION 2: Requires info from multiple source")
-    print("\n" + "=" * 60)
+    print(f"\nMulti-query returned {len(docs)} unique chunks")
 
-    q2 = "How does the attention mechanism relate to Langchain?"
-    print(f"\nUser: {q2}")
-    print(f"\nAssistant: {assistant.ask(question=q2)}")
+    # # Question 1: Direct answer
+    # print("\n" + "=" * 60)
+    # print("QUESTION 1: Direct factual question")
+    # print("\n" + "=" * 60)
 
-    # Question 3: THE FAILURE - follow-up question
-    print("\n" + "=" * 60)
-    print("QUESTION 3: Follow-up (this will fail!)")
-    print("\n" + "=" * 60)
+    # q1 = "What is RAG and what are it's main components"
+    # print(f"\nUser: {q1}")
+    # print(f"\nAssistant: {assistant.ask(question=q1)}")
 
-    q3 = "Can you expand on the second component you just mentioned"
-    print(f"\nUser: {q3}")
-    print(f"\nAssistant: {assistant.ask(q3)}")
+    # # Question 2: Cross-document
+    # print("\n" + "=" * 60)
+    # print("QUESTION 2: Requires info from multiple source")
+    # print("\n" + "=" * 60)
 
-    print("\n" + "=" * 60)
-    print("PROBLEM: It has not idea what 'you just mentioned' means!")
-    print("Each question is independent -- there is not memory")
-    print("\n" + "=" * 60)
+    # q2 = "How does the attention mechanism relate to Langchain?"
+    # print(f"\nUser: {q2}")
+    # print(f"\nAssistant: {assistant.ask(question=q2)}")
+
+    # # Question 3: THE FAILURE - follow-up question
+    # print("\n" + "=" * 60)
+    # print("QUESTION 3: Follow-up (this will fail!)")
+    # print("\n" + "=" * 60)
+
+    # q3 = "Can you expand on the second component you just mentioned"
+    # print(f"\nUser: {q3}")
+    # print(f"\nAssistant: {assistant.ask(q3)}")
+
+    # print("\n" + "=" * 60)
+    # print("PROBLEM: It has not idea what 'you just mentioned' means!")
+    # print("Each question is independent -- there is not memory")
+    # print("\n" + "=" * 60)
 
     # Cleanup
     shutil.rmtree(DB_PATH, ignore_errors=True)
