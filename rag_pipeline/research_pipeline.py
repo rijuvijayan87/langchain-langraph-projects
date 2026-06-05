@@ -5,11 +5,15 @@ from typing import TypedDict
 
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
+from langchain.messages import AIMessage, HumanMessage
 from langchain_chroma import Chroma
-from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.chat_history import (
+    BaseChatMessageHistory,
+    InMemoryChatMessageHistory,
+)
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import BaseModel, Field
@@ -48,6 +52,7 @@ class AIResearchAssistant:
         chunk_overlap: int = 200,
     ) -> None:
         self.persist_directory = persist_directory
+        self.session_store: dict[str, InMemoryChatMessageHistory] = {}
 
         # 1. embedding turn text into vectors
         self.embeddings = OpenAIEmbeddings(model=MODEL)
@@ -150,6 +155,8 @@ class AIResearchAssistant:
     def ask(self, question: str) -> str:
         """Ask a question against research documents"""
 
+        history = self._get_session_history("session_id")
+
         # Step 1: Retrieve relevant chunks
         retriever = self._build_retriever()
         docs = retriever.invoke(question)
@@ -173,6 +180,7 @@ class AIResearchAssistant:
                     4. Rate your confidence: high, medium or low
                     """,
                 ),
+                MessagesPlaceholder(variable_name="history"),
                 (
                     "human",
                     """
@@ -188,9 +196,39 @@ class AIResearchAssistant:
         # Step 4: Build and run the chain
         chain = prompt | self.llm | StrOutputParser()
 
-        response = chain.invoke({"context": context, "question": question})
+        response = chain.invoke(
+            {"context": context, "question": question, "history": history.messages}
+        )
+
+        history.add_message(HumanMessage(content=question))
+        history.add_message(AIMessage(content=response))
 
         return response
+
+    def clear_session(self, session_id: str):
+        """Clear conversation history for a session"""
+        if session_id in self.session_store:
+            self.session_store[session_id].clear()
+            print(f"Cleared session: {session_id}")
+
+    def get_session_history_display(self, session_id: str) -> list:
+        """Get conversation history as readable dicts"""
+        if session_id not in self.session_store:
+            return []
+        return [
+            {
+                "role": "human" if isinstance(m, HumanMessage) else "assistant",
+                "content": m.content,
+            }
+            for m in self.session_store[session_id].messages
+        ]
+
+    def _get_session_history(self, session_id: str) -> BaseChatMessageHistory:
+        """Get or create a chat history for a given session"""
+        if session_id not in self.session_store:
+            self.session_store[session_id] = InMemoryChatMessageHistory()
+
+        return self.session_store[session_id]
 
 
 if __name__ == "__main__":
