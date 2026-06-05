@@ -18,7 +18,7 @@ load_dotenv()
 
 def summarize_conversations():
     chat_llm = init_chat_model(model="gpt-4o-mini", temperature=0.7)
-    summarize_llm = init_chat_model(model="gpt-4o-mini", temperature=0)
+    summarize_llm = init_chat_model(model="gpt-4o-mini`", temperature=0)
 
     chat_prompt_template = ChatPromptTemplate.from_messages(
         [
