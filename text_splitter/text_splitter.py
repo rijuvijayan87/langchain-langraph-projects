@@ -103,6 +103,7 @@ def chunk_size_comparison():
     ]
 
     print("=== Chunk size comparison ===")
+
     print(f"chunk size {len(SAMPLE_TEXT)}")
 
     for size, chunks in zip(chunk_sizes, chunks_total):
@@ -130,7 +131,7 @@ def importance_of_overlap():
     print(f" Chunk 1 end : ...{chunk_without_overlap[0][-20:]}")
     print(f" Chunk 2 start: {chunk_without_overlap[1][:20]}...")
 
-    print(f"\nwith overlap:")
+    print("\nwith overlap:")
     print(f" Chunk 1 end: ...{chunk_with_overlap[0][-20:]}")
     print(f" Chunk 2 start: {chunk_with_overlap[0][:-20]}...")
 

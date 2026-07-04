@@ -36,7 +36,6 @@ def lazy_loader():
             )
 
         loader = DirectoryLoader(path=tmpDir, glob="*.txt", loader_cls=TextLoader)
-
         print(f"Initialized lazy loader for directory {tmpDir}")
 
         for doc in loader.lazy_load():
